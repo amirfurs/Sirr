@@ -1,7 +1,6 @@
-# Discord Bot - Ready for Render Deployment
-# Environment Variables - Copy these to Render Dashboard
+# Discord Bot Web Service - Environment Variables
 
-## Environment Variables for Render:
+## For Render Web Service Dashboard:
 
 DISCORD_BOT_TOKEN=MTM4Mzc4ODc5Mzc4NTYxNDM0Ng.G-LVFF.rVYUsXhkP_xLe7I8cSWhnAamGiwA0Rh7N0mVmU
 
@@ -9,37 +8,30 @@ MONGO_URL=mongodb+srv://arkoubioussam:vXvLY1zxbkU2zgj9@cluster0.2ps5tzx.mongodb.
 
 DB_NAME=discord_bot_db
 
-## ✅ All credentials are ready for deployment!
+PORT=10000
 
-## 🚀 Deployment Steps:
+## ✅ Web Service Features:
 
-### 1. Push to GitHub (if not done):
-```bash
-git add .
-git commit -m "Discord bot ready for Render"
-git push origin main
-```
+🌐 **FastAPI Web Interface** - Control your bot via web API
+🤖 **Discord Bot 24/7** - All Arabic commands working  
+📊 **Statistics Dashboard** - Real-time server data
+🔧 **Remote Management** - Start/stop bot via HTTP
+📱 **Public URL** - Access from anywhere
+📈 **Reports & Analytics** - Detailed bot statistics
 
-### 2. Deploy to Render:
-- Go to https://render.com
-- Click "New" → "Blueprint" 
-- Connect your GitHub repository
-- Render will detect the render.yaml file
+## 🚀 After Deployment you'll get:
 
-### 3. Add Environment Variables:
-In Render dashboard, add the three variables above exactly as shown.
+**Public URL**: https://your-app-name.onrender.com
+**API Base**: https://your-app-name.onrender.com/api/
+**Bot Status**: https://your-app-name.onrender.com/api/bot/status
+**Health Check**: https://your-app-name.onrender.com/api/health
 
-### 4. Deploy!
-Click "Deploy" and watch the logs for "Bot connected to Discord!"
+## 📋 Deploy Steps:
 
-## 🧪 Test Commands:
-- /اختبار - Test bot
-- /مساعدة - Help menu
-- /مسح 5 - Clear messages (if you have permissions)
+1. Push code to GitHub
+2. Render → New → Web Service  
+3. Connect repository
+4. Add environment variables above
+5. Deploy!
 
-## Bot Features:
-✅ Arabic commands for moderation
-✅ Statistics and reporting
-✅ Announcements and polls
-✅ 24/7 uptime on Render
-✅ Free hosting (750 hours/month)
+Both Discord bot AND web API will run together! 🎉
