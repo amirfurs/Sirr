@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta
 
 # Get the backend URL from environment variables
-BACKEND_URL = "https://7342d95f-5fe9-48da-af9b-38c0695c791f.preview.emergentagent.com/api"
+BACKEND_URL = "https://9c30fc51-e4c0-4eec-b50d-c874183f13e8.preview.emergentagent.com/api"
 
 class DiscordBotAPITest(unittest.TestCase):
     
