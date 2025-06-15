@@ -840,6 +840,15 @@ async def violations_report(interaction: discord.Interaction):
 # GENERAL COMMANDS
 # ====================
 
+@bot.tree.command(name="ping", description="Test bot response / اختبار استجابة البوت")
+async def ping_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🏓 Pong!",
+        description=f"البوت يعمل!\nLatency: {round(bot.latency * 1000)}ms",
+        color=discord.Color.green()
+    )
+    await interaction.response.send_message(embed=embed)
+
 @bot.tree.command(name="اختبار", description="اختبار البوت")
 async def test_bot(interaction: discord.Interaction):
     embed = discord.Embed(
