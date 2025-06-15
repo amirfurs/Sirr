@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,9 +9,11 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
+import subprocess
+import sys
+import signal
+import psutil
 import asyncio
-import threading
-from discord_bot import bot, run_discord_bot
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -26,6 +28,10 @@ app = FastAPI(title="Discord Bot Management API", version="1.0.0")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
+
+# Global variables for bot process management
+bot_process = None
+bot_status = {"status": "stopped", "pid": None, "started_at": None}
 
 # Define Models
 class StatusCheck(BaseModel):
@@ -77,178 +83,178 @@ async def get_status_checks():
     status_checks = await db.status_checks.find().to_list(1000)
     return [StatusCheck(**status_check) for status_check in status_checks]
 
-# Discord Bot API Routes
+# Discord Bot Management Routes
 @api_router.get("/bot/status")
 async def get_bot_status():
     """Get Discord bot status"""
-    if bot.is_ready():
-        return {
-            "status": "online",
-            "latency": round(bot.latency * 1000),
-            "guilds": len(bot.guilds),
-            "users": len(bot.users)
-        }
-    else:
-        return {"status": "offline"}
+    global bot_status
+    
+    # Check if process is actually running
+    if bot_status["pid"]:
+        try:
+            process = psutil.Process(bot_status["pid"])
+            if process.is_running():
+                bot_status["status"] = "running"
+            else:
+                bot_status["status"] = "stopped"
+                bot_status["pid"] = None
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            bot_status["status"] = "stopped"
+            bot_status["pid"] = None
+    
+    return bot_status
 
-@api_router.get("/bot/guilds")
-async def get_bot_guilds():
-    """Get list of guilds the bot is in"""
-    if not bot.is_ready():
-        raise HTTPException(status_code=503, detail="Bot is not ready")
+@api_router.post("/bot/start")
+async def start_bot():
+    """Start the Discord bot"""
+    global bot_process, bot_status
     
-    guilds = []
-    for guild in bot.guilds:
-        guilds.append({
-            "id": guild.id,
-            "name": guild.name,
-            "member_count": guild.member_count,
-            "icon": str(guild.icon.url) if guild.icon else None,
-            "owner_id": guild.owner_id
-        })
-    return {"guilds": guilds}
-
-@api_router.get("/bot/guilds/{guild_id}/stats")
-async def get_guild_stats(guild_id: int):
-    """Get statistics for a specific guild"""
-    if not bot.is_ready():
-        raise HTTPException(status_code=503, detail="Bot is not ready")
-    
-    guild = bot.get_guild(guild_id)
-    if not guild:
-        raise HTTPException(status_code=404, detail="Guild not found")
-    
-    # Calculate stats
-    online = len([m for m in guild.members if m.status.name == "online"])
-    idle = len([m for m in guild.members if m.status.name == "idle"])
-    dnd = len([m for m in guild.members if m.status.name == "dnd"])
-    offline = len([m for m in guild.members if m.status.name == "offline"])
-    
-    bots = len([m for m in guild.members if m.bot])
-    humans = len([m for m in guild.members if not m.bot])
-    
-    stats = {
-        "guild_id": guild_id,
-        "guild_name": guild.name,
-        "member_count": guild.member_count,
-        "online_count": online,
-        "idle_count": idle,
-        "dnd_count": dnd,
-        "offline_count": offline,
-        "bot_count": bots,
-        "human_count": humans,
-        "channel_count": len(guild.channels),
-        "text_channel_count": len(guild.text_channels),
-        "voice_channel_count": len(guild.voice_channels),
-        "role_count": len(guild.roles),
-        "created_at": guild.created_at.isoformat(),
-        "owner_id": guild.owner_id
-    }
-    
-    return stats
-
-@api_router.get("/bot/guilds/{guild_id}/moderation-logs")
-async def get_guild_moderation_logs(guild_id: int, limit: int = 50):
-    """Get moderation logs for a guild"""
-    logs = await db.moderation_logs.find({
-        "guild_id": guild_id
-    }).sort("timestamp", -1).limit(limit).to_list(length=limit)
-    
-    return {"logs": logs, "total": len(logs)}
-
-@api_router.get("/bot/guilds/{guild_id}/members")
-async def get_guild_members(guild_id: int, limit: int = 100):
-    """Get list of guild members"""
-    if not bot.is_ready():
-        raise HTTPException(status_code=503, detail="Bot is not ready")
-    
-    guild = bot.get_guild(guild_id)
-    if not guild:
-        raise HTTPException(status_code=404, detail="Guild not found")
-    
-    members = []
-    for member in guild.members[:limit]:
-        members.append({
-            "id": member.id,
-            "name": member.display_name,
-            "username": member.name,
-            "discriminator": member.discriminator,
-            "avatar": str(member.display_avatar.url),
-            "status": str(member.status),
-            "joined_at": member.joined_at.isoformat() if member.joined_at else None,
-            "created_at": member.created_at.isoformat(),
-            "roles": [role.name for role in member.roles if role.name != "@everyone"],
-            "is_bot": member.bot
-        })
-    
-    return {"members": members, "total": len(members)}
-
-@api_router.get("/bot/guilds/{guild_id}/channels")
-async def get_guild_channels(guild_id: int):
-    """Get list of guild channels"""
-    if not bot.is_ready():
-        raise HTTPException(status_code=503, detail="Bot is not ready")
-    
-    guild = bot.get_guild(guild_id)
-    if not guild:
-        raise HTTPException(status_code=404, detail="Guild not found")
-    
-    channels = []
-    for channel in guild.channels:
-        channels.append({
-            "id": channel.id,
-            "name": channel.name,
-            "type": str(channel.type),
-            "category": channel.category.name if channel.category else None,
-            "position": channel.position
-        })
-    
-    return {"channels": channels}
-
-@api_router.post("/bot/guilds/{guild_id}/announce")
-async def create_guild_announcement(guild_id: int, announcement: AnnouncementRequest):
-    """Create an announcement in a specific channel"""
-    if not bot.is_ready():
-        raise HTTPException(status_code=503, detail="Bot is not ready")
-    
-    guild = bot.get_guild(guild_id)
-    if not guild:
-        raise HTTPException(status_code=404, detail="Guild not found")
-    
-    channel = guild.get_channel(announcement.channel_id)
-    if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
+    if bot_status["status"] == "running":
+        return {"message": "Bot is already running", "status": bot_status}
     
     try:
-        import discord
-        embed = discord.Embed(
-            title=f"📢 {announcement.title}",
-            description=announcement.content,
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
+        # Start the Discord bot as a separate process
+        bot_process = subprocess.Popen(
+            [sys.executable, "discord_bot.py"],
+            cwd=ROOT_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
         
-        await channel.send(embed=embed)
-        return {"success": True, "message": "Announcement sent successfully"}
+        bot_status = {
+            "status": "starting",
+            "pid": bot_process.pid,
+            "started_at": datetime.utcnow().isoformat()
+        }
+        
+        return {"message": "Bot started successfully", "status": bot_status}
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send announcement: {str(e)}")
+        return {"message": f"Failed to start bot: {str(e)}", "status": "error"}
 
-@api_router.get("/bot/guilds/{guild_id}/reports/daily")
-async def get_daily_report(guild_id: int):
-    """Generate daily report for a guild"""
+@api_router.post("/bot/stop")
+async def stop_bot():
+    """Stop the Discord bot"""
+    global bot_process, bot_status
+    
+    if bot_status["status"] == "stopped":
+        return {"message": "Bot is already stopped", "status": bot_status}
+    
+    try:
+        if bot_process and bot_status["pid"]:
+            try:
+                # Try to terminate gracefully
+                process = psutil.Process(bot_status["pid"])
+                process.terminate()
+                
+                # Wait up to 5 seconds for graceful shutdown
+                try:
+                    process.wait(timeout=5)
+                except psutil.TimeoutExpired:
+                    # Force kill if it doesn't terminate gracefully
+                    process.kill()
+                
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass  # Process already dead
+        
+        bot_status = {
+            "status": "stopped",
+            "pid": None,
+            "started_at": None
+        }
+        
+        return {"message": "Bot stopped successfully", "status": bot_status}
+    
+    except Exception as e:
+        return {"message": f"Failed to stop bot: {str(e)}", "status": "error"}
+
+@api_router.post("/bot/restart")
+async def restart_bot():
+    """Restart the Discord bot"""
+    stop_response = await stop_bot()
+    if "error" in stop_response.get("status", ""):
+        return stop_response
+    
+    # Wait a moment before restarting
+    await asyncio.sleep(2)
+    
+    return await start_bot()
+
+@api_router.get("/bot/logs")
+async def get_bot_logs():
+    """Get recent bot logs"""
+    try:
+        log_file = ROOT_DIR / "bot.log"
+        if log_file.exists():
+            with open(log_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                recent_lines = lines[-50:]  # Get last 50 lines
+                return {"logs": recent_lines}
+        else:
+            return {"logs": ["No log file found"]}
+    except Exception as e:
+        return {"logs": [f"Error reading logs: {str(e)}"]}
+
+# Database API Routes for Discord Bot Data
+@api_router.get("/bot/moderation-logs")
+async def get_moderation_logs(guild_id: Optional[int] = None, limit: int = 50):
+    """Get moderation logs"""
+    query = {}
+    if guild_id:
+        query["guild_id"] = guild_id
+    
+    logs = await db.moderation_logs.find(query).sort("timestamp", -1).limit(limit).to_list(length=limit)
+    return {"logs": logs, "total": len(logs)}
+
+@api_router.get("/bot/server-activity")
+async def get_server_activity(guild_id: Optional[int] = None, days: int = 7):
+    """Get server activity statistics"""
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    query = {"timestamp": {"$gte": start_date}}
+    if guild_id:
+        query["guild_id"] = guild_id
+    
+    activities = await db.server_activity.find(query).to_list(length=None)
+    
+    # Count messages per user
+    user_activity = {}
+    daily_activity = {}
+    
+    for activity in activities:
+        if activity.get("type") == "message":
+            user_id = activity["user_id"]
+            user_activity[user_id] = user_activity.get(user_id, 0) + 1
+            
+            # Daily breakdown
+            day = activity["timestamp"].strftime("%Y-%m-%d")
+            daily_activity[day] = daily_activity.get(day, 0) + 1
+    
+    # Sort by activity
+    sorted_users = sorted(user_activity.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    return {
+        "period_days": days,
+        "total_messages": len([a for a in activities if a.get("type") == "message"]),
+        "active_users": len(user_activity),
+        "top_users": [{"user_id": user_id, "message_count": count} for user_id, count in sorted_users],
+        "daily_breakdown": daily_activity
+    }
+
+@api_router.get("/bot/reports/daily")
+async def get_daily_report(guild_id: Optional[int] = None):
+    """Generate daily report"""
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     
+    query = {"timestamp": {"$gte": today}}
+    if guild_id:
+        query["guild_id"] = guild_id
+    
     # Get today's moderation actions
-    mod_actions = await db.moderation_logs.find({
-        "guild_id": guild_id,
-        "timestamp": {"$gte": today}
-    }).to_list(length=None)
+    mod_actions = await db.moderation_logs.find(query).to_list(length=None)
     
     # Get today's activity
-    activities = await db.server_activity.find({
-        "guild_id": guild_id,
-        "timestamp": {"$gte": today}
-    }).to_list(length=None)
+    activities = await db.server_activity.find(query).to_list(length=None)
     
     # Summarize moderation actions
     mod_summary = {}
@@ -261,21 +267,25 @@ async def get_daily_report(guild_id: int):
     
     return {
         "date": today.isoformat(),
+        "guild_id": guild_id,
         "moderation_actions": mod_summary,
         "total_moderation_actions": len(mod_actions),
         "message_count": message_count,
         "total_activities": len(activities)
     }
 
-@api_router.get("/bot/guilds/{guild_id}/reports/violations")
-async def get_violations_report(guild_id: int):
+@api_router.get("/bot/reports/violations")
+async def get_violations_report(guild_id: Optional[int] = None):
     """Generate comprehensive violations report"""
-    violations = await db.moderation_logs.find({
-        "guild_id": guild_id
-    }).to_list(length=None)
+    query = {}
+    if guild_id:
+        query["guild_id"] = guild_id
+    
+    violations = await db.moderation_logs.find(query).to_list(length=None)
     
     if not violations:
         return {
+            "guild_id": guild_id,
             "total_violations": 0,
             "violation_types": {},
             "top_violators": []
@@ -298,43 +308,10 @@ async def get_violations_report(guild_id: int):
     sorted_violators = sorted(top_violators.items(), key=lambda x: x[1], reverse=True)[:10]
     
     return {
+        "guild_id": guild_id,
         "total_violations": len(violations),
         "violation_types": violation_types,
         "top_violators": [{"user_id": user_id, "count": count} for user_id, count in sorted_violators]
-    }
-
-@api_router.get("/bot/guilds/{guild_id}/activity/stats")
-async def get_activity_stats(guild_id: int, days: int = 7):
-    """Get activity statistics for a period"""
-    start_date = datetime.utcnow() - timedelta(days=days)
-    
-    activities = await db.server_activity.find({
-        "guild_id": guild_id,
-        "timestamp": {"$gte": start_date},
-        "type": "message"
-    }).to_list(length=None)
-    
-    # Count messages per user
-    user_activity = {}
-    daily_activity = {}
-    
-    for activity in activities:
-        user_id = activity["user_id"]
-        user_activity[user_id] = user_activity.get(user_id, 0) + 1
-        
-        # Daily breakdown
-        day = activity["timestamp"].strftime("%Y-%m-%d")
-        daily_activity[day] = daily_activity.get(day, 0) + 1
-    
-    # Sort by activity
-    sorted_users = sorted(user_activity.items(), key=lambda x: x[1], reverse=True)[:10]
-    
-    return {
-        "period_days": days,
-        "total_messages": len(activities),
-        "active_users": len(user_activity),
-        "top_users": [{"user_id": user_id, "message_count": count} for user_id, count in sorted_users],
-        "daily_breakdown": daily_activity
     }
 
 # Include the router in the main app
@@ -358,21 +335,26 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def startup_event():
     """Start the Discord bot when FastAPI starts"""
-    logger.info("Starting Discord bot...")
-    
-    # Start Discord bot in a separate thread
-    def start_bot():
-        asyncio.run(run_discord_bot())
-    
-    bot_thread = threading.Thread(target=start_bot, daemon=True)
-    bot_thread.start()
-    
-    logger.info("Discord bot started in background")
+    logger.info("FastAPI server starting...")
+    logger.info("Discord bot can be started via /api/bot/start endpoint")
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    global bot_process, bot_status
+    
+    # Stop bot process if running
+    if bot_status["status"] == "running" and bot_status["pid"]:
+        try:
+            process = psutil.Process(bot_status["pid"])
+            process.terminate()
+            process.wait(timeout=5)
+        except:
+            pass
+    
+    # Close database connection
     client.close()
-    logger.info("Database connection closed")
+    logger.info("FastAPI server shutting down...")
 
 # Health check endpoint
 @api_router.get("/health")
@@ -380,5 +362,5 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "bot_status": "online" if bot.is_ready() else "offline"
+        "bot_status": bot_status["status"]
     }
