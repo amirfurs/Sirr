@@ -1,9 +1,9 @@
 services:
-  - type: worker
-    name: discord-bot-arabic
+  - type: web
+    name: discord-bot-arabic-web
     env: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && python start_bot.py
+    startCommand: cd backend && python web_server.py
     envVars:
       - key: DISCORD_BOT_TOKEN
         sync: false  # Set this in Render dashboard with your Discord bot token
@@ -11,5 +11,7 @@ services:
         sync: false  # Set this in Render dashboard with your MongoDB connection string
       - key: DB_NAME
         value: discord_bot_db  # Default database name
-    plan: free  # Use the free plan (750 hours/month)
+      - key: PORT
+        value: 10000  # Render's default port for web services
+    plan: free  # Use the free plan
     region: oregon  # Choose your preferred region
