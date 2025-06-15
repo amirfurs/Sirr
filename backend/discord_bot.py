@@ -81,12 +81,36 @@ async def on_ready():
     logger.info(f'{bot.user} قد اتصل بديسكورد!')
     logger.info(f'Bot is in {len(bot.guilds)} servers')
     
-    # Sync slash commands
+    # Sync slash commands globally and for specific guilds
     try:
+        # Global sync (can take up to 1 hour)
         synced = await bot.tree.sync()
-        logger.info(f'Synced {len(synced)} command(s)')
+        logger.info(f'Synced {len(synced)} global command(s)')
+        
+        # Sync for specific guild for instant availability
+        for guild in bot.guilds:
+            try:
+                guild_synced = await bot.tree.sync(guild=guild)
+                logger.info(f'Synced {len(guild_synced)} command(s) for guild {guild.name}')
+            except Exception as e:
+                logger.error(f'Failed to sync commands for guild {guild.name}: {e}')
+                
     except Exception as e:
-        logger.error(f'Failed to sync commands: {e}')
+        logger.error(f'Failed to sync global commands: {e}')
+        
+    # Print available commands
+    logger.info("Available commands:")
+    for command in bot.tree.get_commands():
+        logger.info(f"  /{command.name} - {command.description}")
+
+@bot.event
+async def on_guild_join(guild):
+    """Sync commands when bot joins a new guild"""
+    try:
+        synced = await bot.tree.sync(guild=guild)
+        logger.info(f'Synced {len(synced)} command(s) for new guild {guild.name}')
+    except Exception as e:
+        logger.error(f'Failed to sync commands for new guild {guild.name}: {e}')
 
 @bot.event
 async def on_message(message):
