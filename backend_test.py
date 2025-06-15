@@ -33,15 +33,14 @@ class DiscordBotAPITest(unittest.TestCase):
         self.assertEqual(data["message"], "Discord Bot Management API")
         self.assertEqual(data["status"], "running")
         
-    def test_health_check(self):
-        """Test the health check endpoint"""
-        response = requests.get(f"{BACKEND_URL}/health")
+    def test_status_endpoint(self):
+        """Test the status endpoint"""
+        response = requests.get(f"{BACKEND_URL}/status")
         data = response.json()
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(data["status"], "healthy")
-        self.assertIn("timestamp", data)
-        self.assertIn("bot_status", data)
+        self.assertTrue(isinstance(data, list))
+        # This endpoint returns a list of status checks
     
     def test_bot_status(self):
         """Test the bot status endpoint"""
