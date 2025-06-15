@@ -3,7 +3,7 @@ services:
     name: discord-bot-arabic-web
     env: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && python web_server.py
+    startCommand: cd backend && python start.py
     envVars:
       - key: DISCORD_BOT_TOKEN
         sync: false  # Set this in Render dashboard with your Discord bot token
