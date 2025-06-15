@@ -185,10 +185,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Discord Bot Core Implementation"
-    - "FastAPI Integration with Discord Bot"
-    - "Arabic Command System"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
