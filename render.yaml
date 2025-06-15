@@ -3,12 +3,13 @@ services:
     name: discord-bot-arabic
     env: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && python discord_bot.py
+    startCommand: cd backend && python start_bot.py
     envVars:
       - key: DISCORD_BOT_TOKEN
-        sync: false  # You'll set this in Render dashboard
-      - key: MONGO_URL
-        sync: false  # You'll set this in Render dashboard
+        sync: false  # Set this in Render dashboard with your Discord bot token
+      - key: MONGO_URL 
+        sync: false  # Set this in Render dashboard with your MongoDB connection string
       - key: DB_NAME
-        sync: false  # You'll set this in Render dashboard
-    plan: free  # Use the free plan
+        value: discord_bot_db  # Default database name
+    plan: free  # Use the free plan (750 hours/month)
+    region: oregon  # Choose your preferred region
