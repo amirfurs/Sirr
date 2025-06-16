@@ -1,0 +1,33 @@
+name: Keep Render Service Alive
+
+on:
+  schedule:
+    # Run every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Ping Service
+      run: |
+        echo "Pinging service to keep it alive..."
+        
+        # Replace YOUR_RENDER_URL with your actual Render service URL
+        SERVICE_URL="https://YOUR_RENDER_URL.onrender.com"
+        
+        # Try multiple endpoints
+        curl -f "$SERVICE_URL/wake-up" || echo "Wake-up endpoint failed"
+        sleep 2
+        curl -f "$SERVICE_URL/api/keep-alive" || echo "Keep-alive endpoint failed"
+        sleep 2
+        curl -f "$SERVICE_URL/" || echo "Root endpoint failed"
+        
+        echo "Keep-alive pings completed"
+    
+    - name: Log Status
+      run: |
+        echo "Service ping completed at $(date)"
+        echo "Next ping in 10 minutes"
