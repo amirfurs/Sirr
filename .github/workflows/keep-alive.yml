@@ -16,7 +16,7 @@ jobs:
         echo "Pinging service to keep it alive..."
         
         # Replace YOUR_RENDER_URL with your actual Render service URL
-        SERVICE_URL="https://YOUR_RENDER_URL.onrender.com"
+        SERVICE_URL="https://sirr.onrender.com"
         
         # Try multiple endpoints
         curl -f "$SERVICE_URL/wake-up" || echo "Wake-up endpoint failed"
