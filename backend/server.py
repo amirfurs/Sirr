@@ -357,7 +357,7 @@ async def shutdown_event():
     logger.info("FastAPI server shutting down...")
 
 # Health check endpoint with detailed status
-@api_router.get("/health")
+@app.get("/api/health")
 async def health_check():
     """Comprehensive health check endpoint"""
     import psutil
