@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Start script for Discord Bot Web Service on Render
+Robust start script for Discord Bot Web Service on Render
 This is the main entry point that Render will execute
 """
 
@@ -9,9 +9,12 @@ import sys
 import asyncio
 import threading
 import logging
+import time
+import signal
 from pathlib import Path
 from dotenv import load_dotenv
 import uvicorn
+import psutil
 
 # Add the current directory to Python path
 current_dir = Path(__file__).parent
@@ -20,16 +23,21 @@ sys.path.insert(0, str(current_dir))
 # Load environment variables
 load_dotenv()
 
-# Configure logging for Render
+# Configure logging for Render with better formatting
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
     ]
 )
 
 logger = logging.getLogger(__name__)
+
+# Global variables for bot management
+bot_thread = None
+bot_running = False
+app_shutdown = False
 
 def check_environment():
     """Check if all required environment variables are set"""
@@ -47,39 +55,127 @@ def check_environment():
             logger.error(f"  - {var}")
         return False
     
-    logger.info("All required environment variables are set")
+    logger.info("✅ All required environment variables are set")
+    
+    # Log some debug info (without sensitive data)
+    logger.info(f"DB_NAME: {os.environ.get('DB_NAME')}")
+    logger.info(f"PORT: {os.environ.get('PORT', '10000')}")
+    logger.info(f"DISCORD_BOT_TOKEN: {'*' * 20}...{os.environ.get('DISCORD_BOT_TOKEN', '')[-6:]}")
+    
     return True
 
-def start_discord_bot():
-    """Start Discord bot in a separate thread"""
-    def run_bot():
+def log_system_resources():
+    """Log system resource usage"""
+    try:
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        cpu_percent = process.cpu_percent()
+        
+        logger.info(f"📊 System Resources:")
+        logger.info(f"  - Memory: {memory_info.rss / 1024 / 1024:.2f} MB")
+        logger.info(f"  - CPU: {cpu_percent:.2f}%")
+        
+        # System resources
+        system_memory = psutil.virtual_memory()
+        logger.info(f"  - System Memory: {system_memory.percent:.1f}% used")
+        
+    except Exception as e:
+        logger.warning(f"Could not log system resources: {e}")
+
+def run_bot_with_recovery():
+    """Run Discord bot with automatic recovery"""
+    global bot_running, app_shutdown
+    
+    retry_count = 0
+    max_retries = 5
+    
+    while not app_shutdown and retry_count < max_retries:
         try:
-            logger.info("Starting Discord bot in background thread...")
+            logger.info(f"🤖 Starting Discord bot (attempt {retry_count + 1}/{max_retries})")
+            bot_running = True
+            
             from discord_bot import run_discord_bot
             asyncio.run(run_discord_bot())
+            
         except Exception as e:
-            logger.error(f"Discord bot error: {e}")
+            bot_running = False
+            retry_count += 1
+            logger.error(f"❌ Discord bot crashed: {e}")
+            
+            if retry_count < max_retries and not app_shutdown:
+                wait_time = min(30 * retry_count, 300)  # Max 5 minutes
+                logger.info(f"🔄 Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"💥 Bot failed after {max_retries} attempts")
+                break
     
-    # Start bot in daemon thread
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_running = False
+    logger.info("🛑 Bot thread terminated")
+
+def start_discord_bot():
+    """Start Discord bot in a separate thread with recovery"""
+    global bot_thread
+    
+    # Start bot in a non-daemon thread so it can be properly managed
+    bot_thread = threading.Thread(target=run_bot_with_recovery, daemon=False)
     bot_thread.start()
-    logger.info("Discord bot thread started")
+    logger.info("✅ Discord bot thread started with recovery mechanism")
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals"""
+    global app_shutdown
+    logger.info(f"🛑 Received signal {signum}, shutting down gracefully...")
+    app_shutdown = True
+
+def health_check_loop():
+    """Periodic health check to keep service alive"""
+    while not app_shutdown:
+        try:
+            time.sleep(60)  # Check every minute
+            
+            if not app_shutdown:
+                logger.info("💓 Health check - Service is alive")
+                log_system_resources()
+                
+                # Check bot status
+                if bot_thread and bot_thread.is_alive():
+                    logger.info("✅ Discord bot thread is running")
+                else:
+                    logger.warning("⚠️ Discord bot thread is not running")
+                    
+        except Exception as e:
+            logger.error(f"Health check error: {e}")
 
 def main():
     """Main function to start both web server and Discord bot"""
+    global app_shutdown
+    
     try:
-        logger.info("=" * 50)
+        logger.info("=" * 60)
         logger.info("🚀 Starting Discord Bot Web Service on Render")
-        logger.info("=" * 50)
+        logger.info("=" * 60)
+        
+        # Set up signal handlers
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
         
         # Check environment variables
         if not check_environment():
             logger.error("❌ Environment check failed")
             sys.exit(1)
         
+        # Log initial system resources
+        log_system_resources()
+        
         # Start Discord bot in background
-        logger.info("🤖 Starting Discord bot...")
+        logger.info("🤖 Starting Discord bot with recovery mechanism...")
         start_discord_bot()
+        
+        # Start health check in background
+        health_thread = threading.Thread(target=health_check_loop, daemon=True)
+        health_thread.start()
+        logger.info("✅ Health check thread started")
         
         # Get port from environment (Render sets this automatically)
         port = int(os.environ.get('PORT', 10000))
@@ -89,13 +185,15 @@ def main():
         # Import and run FastAPI server
         from server import app
         
-        # Run FastAPI server
+        # Run FastAPI server with more robust configuration
         uvicorn.run(
             app,
             host="0.0.0.0",
             port=port,
             log_level="info",
-            access_log=True
+            access_log=True,
+            timeout_keep_alive=30,
+            timeout_graceful_shutdown=30
         )
         
     except KeyboardInterrupt:
@@ -104,6 +202,9 @@ def main():
         logger.error(f"💥 Fatal error: {e}")
         logger.exception("Full error details:")
         sys.exit(1)
+    finally:
+        app_shutdown = True
+        logger.info("🧹 Cleanup completed")
 
 if __name__ == "__main__":
     main()
