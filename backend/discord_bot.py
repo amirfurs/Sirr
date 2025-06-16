@@ -928,10 +928,45 @@ async def on_command_error(ctx, error):
 
 # Run the bot
 async def run_discord_bot():
+    """Run Discord bot with proper error handling and logging"""
     try:
-        await bot.start(os.environ['DISCORD_BOT_TOKEN'])
+        logger.info("🤖 Discord bot starting...")
+        
+        # Validate token format
+        token = os.environ.get('DISCORD_BOT_TOKEN')
+        if not token:
+            raise ValueError("DISCORD_BOT_TOKEN not found in environment")
+        
+        if len(token) < 50:  # Basic token validation
+            raise ValueError("DISCORD_BOT_TOKEN appears to be invalid (too short)")
+        
+        # Test database connection before starting bot
+        try:
+            await mongo_client.admin.command('ping')
+            logger.info("✅ Database connection successful")
+        except Exception as db_error:
+            logger.error(f"❌ Database connection failed: {db_error}")
+            raise
+        
+        logger.info("🚀 Starting Discord bot with token...")
+        await bot.start(token)
+        
+    except discord.errors.LoginFailure as e:
+        logger.error(f"❌ Discord login failed - Invalid token: {e}")
+        raise
+    except discord.errors.HTTPException as e:
+        logger.error(f"❌ Discord HTTP error: {e}")
+        raise
     except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
+        logger.error(f"❌ Failed to start Discord bot: {e}")
+        logger.exception("Full error details:")
+        raise
+    finally:
+        logger.info("🛑 Discord bot shutting down...")
+        if not bot.is_closed():
+            await bot.close()
+        if mongo_client:
+            mongo_client.close()
 
 if __name__ == "__main__":
     asyncio.run(run_discord_bot())
