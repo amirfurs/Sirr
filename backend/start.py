@@ -201,15 +201,16 @@ def main():
         # Import and run FastAPI server
         from server import app
         
-        # Run FastAPI server with more robust configuration
+        # Run FastAPI server with optimized configuration for Render
         uvicorn.run(
             app,
             host="0.0.0.0",
             port=port,
-            log_level="info",
-            access_log=True,
+            log_level="warning" if os.environ.get('RENDER') else "info",  # Less logging in production
+            access_log=False if os.environ.get('RENDER') else True,      # Disable access log in production
             timeout_keep_alive=30,
-            timeout_graceful_shutdown=30
+            timeout_graceful_shutdown=30,
+            loop="asyncio"  # Use asyncio loop
         )
         
     except KeyboardInterrupt:
