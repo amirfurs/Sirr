@@ -401,5 +401,22 @@ async def keep_alive():
     return {
         "status": "alive",
         "timestamp": datetime.utcnow().isoformat(),
-        "message": "Service is running"
+        "message": "Service is running",
+        "ping": "pong"
+    }
+
+# Render-specific wake-up endpoint
+@app.get("/wake-up")
+async def wake_up():
+    """Wake up endpoint for external monitors"""
+    return {"status": "awake", "message": "Service is active"}
+
+# Root endpoint that also works as keep-alive
+@app.get("/")
+async def root():
+    """Root endpoint that prevents sleep"""
+    return {
+        "message": "Discord Bot Service",
+        "status": "running",
+        "timestamp": datetime.utcnow().isoformat()
     }
