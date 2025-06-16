@@ -130,13 +130,29 @@ def signal_handler(signum, frame):
 
 def health_check_loop():
     """Periodic health check to keep service alive"""
+    ping_count = 0
     while not app_shutdown:
         try:
-            time.sleep(60)  # Check every minute
+            time.sleep(300)  # Check every 5 minutes (reduced from 1 minute)
+            ping_count += 1
             
             if not app_shutdown:
-                logger.info("💓 Health check - Service is alive")
-                log_system_resources()
+                # Self-ping to keep alive on Render free tier
+                try:
+                    import requests
+                    port = os.environ.get('PORT', '10000')
+                    response = requests.get(f'http://localhost:{port}/api/keep-alive', timeout=5)
+                    if response.status_code == 200:
+                        logger.info(f"💓 Self-ping #{ping_count} successful - Service staying alive")
+                    else:
+                        logger.warning(f"⚠️ Self-ping returned status {response.status_code}")
+                except Exception as ping_error:
+                    logger.warning(f"⚠️ Self-ping failed: {ping_error}")
+                
+                # Log system resources every 30 minutes only
+                if ping_count % 6 == 0:  # Every 6th ping (30 minutes)
+                    log_system_resources()
+                    logger.info(f"📊 Health check #{ping_count} - Detailed resources logged")
                 
                 # Check bot status
                 if bot_thread and bot_thread.is_alive():
