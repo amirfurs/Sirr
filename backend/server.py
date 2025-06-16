@@ -395,7 +395,7 @@ async def health_check():
     }
 
 # Keep-alive endpoint for Render
-@api_router.get("/keep-alive")
+@app.get("/api/keep-alive")
 async def keep_alive():
     """Simple keep-alive endpoint to prevent service from sleeping"""
     return {
