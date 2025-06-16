@@ -356,11 +356,50 @@ async def shutdown_event():
     client.close()
     logger.info("FastAPI server shutting down...")
 
-# Health check endpoint
+# Health check endpoint with detailed status
 @api_router.get("/health")
 async def health_check():
+    """Comprehensive health check endpoint"""
+    import psutil
+    
+    # Check database connection
+    db_status = "unknown"
+    try:
+        # Simple database ping
+        await db.command("ping")
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    # Get system resources
+    try:
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        cpu_percent = process.cpu_percent()
+        
+        system_info = {
+            "memory_mb": round(memory_info.rss / 1024 / 1024, 2),
+            "cpu_percent": cpu_percent,
+            "system_memory_percent": psutil.virtual_memory().percent
+        }
+    except:
+        system_info = {"error": "Could not get system info"}
+    
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "bot_status": bot_status["status"]
+        "bot_status": bot_status["status"],
+        "database_status": db_status,
+        "system_resources": system_info,
+        "uptime_seconds": (datetime.utcnow() - datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+    }
+
+# Keep-alive endpoint for Render
+@api_router.get("/keep-alive")
+async def keep_alive():
+    """Simple keep-alive endpoint to prevent service from sleeping"""
+    return {
+        "status": "alive",
+        "timestamp": datetime.utcnow().isoformat(),
+        "message": "Service is running"
     }
